@@ -1,0 +1,43 @@
+{
+  "name": "FOTS",
+  "cuda": true,
+  "gpus": [
+    0
+  ],
+  "data_loader": {
+    "dataset": "ICDAR 2019 - LSVT",
+    "data_dir": "F:\\Code\\HealthHelper\\Dataset\\ICDAR 2019 - LSVT",
+    "batch_size": 128,
+    "shuffle": true,
+    "workers": 0
+  },
+  "validation": {
+    "validation_split": 0.2,
+    "shuffle": true
+  },
+  "lr_scheduler_type": "",
+  "lr_scheduler_freq": 10000,
+  "lr_scheduler": {
+    "gamma": 0.94
+  },
+  "optimizer_type": "Adam",
+  "optimizer": {
+    "lr": 0.001
+  },
+  "loss": "FOTSLoss",
+  "metrics": [
+    "fots_metric"
+  ],
+  "trainer": {
+    "epochs": 10,
+    "save_dir": "saved/",
+    "save_freq": 1,
+    "verbosity": 2,
+    "monitor": "hmean",
+    "monitor_mode": "max"
+  },
+  "arch": "FOTSModel",
+  "model": {
+    "mode": "united"
+  }
+}
