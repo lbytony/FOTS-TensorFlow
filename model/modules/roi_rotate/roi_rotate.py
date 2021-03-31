@@ -1,0 +1,2 @@
+class RoiRotate:
+    pass
