@@ -1,6 +1,6 @@
-from freq_2500 import freq_list
-from less_freq_1000 import less_freq_list
-from letter import chars_list, spec_list
+from .freq_2500 import freq_list
+from .less_freq_1000 import less_freq_list
+from .letter import chars_list, spec_list
 
 
 def get_all_keys():

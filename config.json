@@ -4,16 +4,23 @@
   "gpus": [
     0
   ],
+  "training": "True",
   "data_loader": {
-    "dataset": "ICDAR 2019 - LSVT",
-    "data_dir": "F:\\Code\\HealthHelper\\Dataset\\ICDAR 2019 - LSVT",
+    "activate": 0,
+    "datasets": [
+      {
+        "name": "ICDAR 2019 LSVT",
+        "data_dir": "F:\\Code\\HealthHelper\\Dataset\\ICDAR 2019 - LSVT",
+        "have_test": "False"
+      }
+    ],
     "batch_size": 128,
     "shuffle": true,
     "workers": 0
   },
-  "validation": {
-    "validation_split": 0.2,
-    "shuffle": true
+  "split_rate": {
+    "validation": 0.1,
+    "test": 0.1
   },
   "lr_scheduler_type": "",
   "lr_scheduler_freq": 10000,

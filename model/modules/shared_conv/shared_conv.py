@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from base.base_model import BaseModel
+from base import BaseModel
 from model.modules.shared_conv.resnet import FOTS_bbNet
 
 

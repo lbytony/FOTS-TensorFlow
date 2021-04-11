@@ -1,22 +1,24 @@
-import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-
 # TODO check is correct
+from base import BaseModel
+
+
 class BidirectionalLSTM(keras.Model):
     def __init__(self, hidden_shape, out_shape):
         super(BidirectionalLSTM, self).__init__()
-        self.lstm_cell_fwd = layers.LSTMCell(hidden_shape)
-        self.lstm_cell_bwd = layers.LSTMCell(hidden_shape)
-        self.bidir = layers.Bidirectional(self.lstm_cell_fwd, backward_layer=self.lstm_cell_bwd)
+        self.lstm_cell_fwd = layers.LSTM(hidden_shape, return_sequences=True, go_backwards=False,
+                                         dropout=0.2, name="fwd_lstm")
+        self.lstm_cell_bwd = layers.LSTM(hidden_shape, return_sequences=True, go_backwards=True,
+                                         dropout=0.2, name="bwd_lstm")
+        self.bilstm = layers.Bidirectional(layer=self.lstm_cell_fwd, merge_mode="concat",
+                                           backward_layer=self.lstm_cell_bwd, name="bilstm")
         self.embedding = layers.Dense(out_shape)
 
     def call(self, inputs, training=None, mask=None):
-        out = self.bidir(inputs)
+        out = self.bilstm(inputs)
         out = self.embedding(out)
-        out = tf.compat.v1.nn.bidirectional_dynamic_rnn
-        out = tf.compat.v1.nn.rnn_cell.LSTMCell
         return out
 
 
@@ -50,13 +52,13 @@ class BasicBlock(keras.Model):
         return out
 
 
-class CNN(keras.Model):
-    def __init__(self):
-        super(CNN, self).__init__()
+class CRNN(keras.Model):
+    def __init__(self, n_class, n_hidden):
+        super(CRNN, self).__init__()
         self.block1 = BasicBlock(64)
         self.block2 = BasicBlock(128)
         self.block3 = BasicBlock(256)
-        self.bilstm = BidirectionalLSTM(256, 256)
+        self.bilstm = BidirectionalLSTM(n_hidden, n_class)
 
     def call(self, inputs, training=None, mask=None):
         out = self.block1(inputs)
@@ -64,3 +66,12 @@ class CNN(keras.Model):
         out = self.block3(out)
         out = self.bilstm(out)
         return out
+
+
+class Recognizer(BaseModel):
+    def __init__(self, n_class, config):
+        super().__init__(config)
+        self.crnn = CRNN(n_class, 256)
+
+    def call(self, rois):
+        return self.crnn(rois)

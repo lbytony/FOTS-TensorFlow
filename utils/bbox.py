@@ -1,110 +1,18 @@
 import math
-import os
 import time
 
-import cv2
-import numpy as np
-import torch
-
 # import locality_aware_nms as nms_locality
-from . import lanms
+from .utils import *
 
 
 class Toolbox:
-
-    @staticmethod
-    def polygon_area(poly):
-        """
-        compute area of a polygon
-        :param poly:
-        :return:
-        """
-        edge = [
-            (poly[1][0] - poly[0][0]) * (poly[1][1] + poly[0][1]),
-            (poly[2][0] - poly[1][0]) * (poly[2][1] + poly[1][1]),
-            (poly[3][0] - poly[2][0]) * (poly[3][1] + poly[2][1]),
-            (poly[0][0] - poly[3][0]) * (poly[0][1] + poly[3][1])
-        ]
-        return np.sum(edge) / 2.
-
-    @staticmethod
-    def restore_rectangle_rbox(origin, geometry):
-        d = geometry[:, :4]
-        angle = geometry[:, 4]
-        # for angle > 0
-        origin_0 = origin[angle >= 0]
-        d_0 = d[angle >= 0]
-        angle_0 = angle[angle >= 0]
-        if origin_0.shape[0] > 0:
-            p = np.array([np.zeros(d_0.shape[0]), -d_0[:, 0] - d_0[:, 2],
-                          d_0[:, 1] + d_0[:, 3], -d_0[:, 0] - d_0[:, 2],
-                          d_0[:, 1] + d_0[:, 3], np.zeros(d_0.shape[0]),
-                          np.zeros(d_0.shape[0]), np.zeros(d_0.shape[0]),
-                          d_0[:, 3], -d_0[:, 2]])
-            p = p.transpose((1, 0)).reshape((-1, 5, 2))  # N*5*2
-
-            rotate_matrix_x = np.array([np.cos(angle_0), np.sin(angle_0)]).transpose((1, 0))
-            rotate_matrix_x = np.repeat(rotate_matrix_x, 5, axis=1).reshape(-1, 2, 5).transpose((0, 2, 1))  # N*5*2
-
-            rotate_matrix_y = np.array([-np.sin(angle_0), np.cos(angle_0)]).transpose((1, 0))
-            rotate_matrix_y = np.repeat(rotate_matrix_y, 5, axis=1).reshape(-1, 2, 5).transpose((0, 2, 1))
-
-            p_rotate_x = np.sum(rotate_matrix_x * p, axis=2)[:, :, np.newaxis]  # N*5*1
-            p_rotate_y = np.sum(rotate_matrix_y * p, axis=2)[:, :, np.newaxis]  # N*5*1
-
-            p_rotate = np.concatenate([p_rotate_x, p_rotate_y], axis=2)  # N*5*2
-
-            p3_in_origin = origin_0 - p_rotate[:, 4, :]
-            new_p0 = p_rotate[:, 0, :] + p3_in_origin  # N*2
-            new_p1 = p_rotate[:, 1, :] + p3_in_origin
-            new_p2 = p_rotate[:, 2, :] + p3_in_origin
-            new_p3 = p_rotate[:, 3, :] + p3_in_origin
-
-            new_p_0 = np.concatenate([new_p0[:, np.newaxis, :], new_p1[:, np.newaxis, :],
-                                      new_p2[:, np.newaxis, :], new_p3[:, np.newaxis, :]], axis=1)  # N*4*2
-        else:
-            new_p_0 = np.zeros((0, 4, 2))
-        # for angle < 0
-        origin_1 = origin[angle < 0]
-        d_1 = d[angle < 0]
-        angle_1 = angle[angle < 0]
-        if origin_1.shape[0] > 0:
-            p = np.array([-d_1[:, 1] - d_1[:, 3], -d_1[:, 0] - d_1[:, 2],
-                          np.zeros(d_1.shape[0]), -d_1[:, 0] - d_1[:, 2],
-                          np.zeros(d_1.shape[0]), np.zeros(d_1.shape[0]),
-                          -d_1[:, 1] - d_1[:, 3], np.zeros(d_1.shape[0]),
-                          -d_1[:, 1], -d_1[:, 2]])
-            p = p.transpose((1, 0)).reshape((-1, 5, 2))  # N*5*2
-
-            rotate_matrix_x = np.array([np.cos(-angle_1), -np.sin(-angle_1)]).transpose((1, 0))
-            rotate_matrix_x = np.repeat(rotate_matrix_x, 5, axis=1).reshape(-1, 2, 5).transpose((0, 2, 1))  # N*5*2
-
-            rotate_matrix_y = np.array([np.sin(-angle_1), np.cos(-angle_1)]).transpose((1, 0))
-            rotate_matrix_y = np.repeat(rotate_matrix_y, 5, axis=1).reshape(-1, 2, 5).transpose((0, 2, 1))
-
-            p_rotate_x = np.sum(rotate_matrix_x * p, axis=2)[:, :, np.newaxis]  # N*5*1
-            p_rotate_y = np.sum(rotate_matrix_y * p, axis=2)[:, :, np.newaxis]  # N*5*1
-
-            p_rotate = np.concatenate([p_rotate_x, p_rotate_y], axis=2)  # N*5*2
-
-            p3_in_origin = origin_1 - p_rotate[:, 4, :]
-            new_p0 = p_rotate[:, 0, :] + p3_in_origin  # N*2
-            new_p1 = p_rotate[:, 1, :] + p3_in_origin
-            new_p2 = p_rotate[:, 2, :] + p3_in_origin
-            new_p3 = p_rotate[:, 3, :] + p3_in_origin
-
-            new_p_1 = np.concatenate([new_p0[:, np.newaxis, :], new_p1[:, np.newaxis, :],
-                                      new_p2[:, np.newaxis, :], new_p3[:, np.newaxis, :]], axis=1)  # N*4*2
-        else:
-            new_p_1 = np.zeros((0, 4, 2))
-        return np.concatenate([new_p_0, new_p_1])
 
     @staticmethod
     def rotate(box_List, image):
         # xuan zhuan tu pian
 
         n = len(box_List)
-        c = 0;
+        c = 0
         angle = 0
         for i in range(n):
             box = box_List[i]
@@ -113,15 +21,15 @@ class Toolbox:
             x1 = min(box[0][0], box[1][0], box[2][0], box[3][0])
             x2 = max(box[0][0], box[1][0], box[2][0], box[3][0])
             for j in range(4):
-                if (box[j][1] == y2):
+                if box[j][1] == y2:
                     k1 = j
             for j in range(4):
-                if (box[j][0] == x2 and j != k1):
+                if box[j][0] == x2 and j != k1:
                     k2 = j
             c = (box[k1][0] - box[k2][0]) * 1.0 / (box[k1][1] - box[k2][1])
-            if (c < 0):
+            if c < 0:
                 c = -c
-            if (c > 1):
+            if c > 1:
                 c = 1.0 / c
             angle = math.atan(c) + angle
         angle = angle / n
@@ -134,12 +42,12 @@ class Toolbox:
 
     @staticmethod
     def resize_image(im, max_side_len=2400):
-        '''
+        """
         resize image to a size multiple of 32 which is required by the network
         :param im: the resized image
         :param max_side_len: limit of max image size to avoid out of memory in gpu
         :return: the resized image and the resize ratio
-        '''
+        """
         h, w, _ = im.shape
 
         resize_w = w
@@ -164,7 +72,7 @@ class Toolbox:
 
     @staticmethod
     def detect(score_map, geo_map, timer, score_map_thresh=0.5, box_thresh=0.8, nms_thres=0.1):
-        '''1e-5
+        """1e-5
         restore text boxes from score map and geo map
         :param score_map:
         :param geo_map:
@@ -173,7 +81,7 @@ class Toolbox:
         :param box_thresh: threshhold for boxes
         :param nms_thres: threshold for nms
         :return:
-        '''
+        """
         # import pdb; pdb.set_trace()
         if len(score_map.shape) == 4:
             score_map = score_map[0, :, :, 0]
@@ -184,8 +92,8 @@ class Toolbox:
         xy_text = xy_text[np.argsort(xy_text[:, 0])]
         # restore
         start = time.time()
-        text_box_restored = Toolbox.restore_rectangle_rbox(xy_text[:, ::-1] * 4,
-                                                           geo_map[xy_text[:, 0], xy_text[:, 1], :])  # N*4*2
+        text_box_restored = restore_rectangle_rbox(xy_text[:, ::-1] * 4,
+                                                   geo_map[xy_text[:, 0], xy_text[:, 1], :])  # N*4*2
         # print('{} text boxes before nms'.format(text_box_restored.shape[0]))
         boxes = np.zeros((text_box_restored.shape[0], 9), dtype=np.float32)
         boxes[:, :8] = text_box_restored.reshape((-1, 8))
@@ -194,7 +102,7 @@ class Toolbox:
         # nms part
         start = time.time()
         # boxes = nms_locality.nms_locality(boxes.astype(np.float64), nms_thres)
-        boxes = lanms.merge_quadrangle_n9(boxes.astype('float32'), nms_thres)
+        # boxes = lanms.merge_quadrangle_n9(boxes.astype('float32'), nms_thres)
         timer['nms'] = time.time() - start
         if boxes.shape[0] == 0:
             return np.array([]), timer
@@ -271,11 +179,11 @@ class Toolbox:
                 x_plus.append(plus)
 
             for jj in range(0, int(closed.shape[1] * 0.5 - 1)):
-                if (x_plus[jj] > 0.4 * max(x_plus)):
+                if x_plus[jj] > 0.4 * max(x_plus):
                     x_left = max(jj - 5, 0)
                     break
             for ii in range(closed.shape[1] - 1, int(closed.shape[1] * 0.5 + 1), -1):
-                if (x_plus[ii] > 0.4 * max(x_plus)):
+                if x_plus[ii] > 0.4 * max(x_plus):
                     x_right = min(ii + 5, closed.shape[1] - 1)
                     break
 
@@ -304,7 +212,7 @@ class Toolbox:
         im_resized = im_resized.unsqueeze(0)
         im_resized = im_resized.permute(0, 3, 1, 2)
 
-        score, geometry, preds, boxes, mapping, indices = model.forward(im_resized, None, None)
+        score, geometry, preds, boxes, mapping, indices = model.call(im_resized, )
 
         if len(boxes) != 0:
             boxes = boxes[:, :8].reshape((-1, 4, 2))
@@ -322,7 +230,7 @@ class Toolbox:
                 poly = np.array([[box[0, 0], box[0, 1]], [box[1, 0], box[1, 1]], [box[2, 0], box[2, 1]],
                                  [box[3, 0], box[3, 1]]])
                 polys.append(polys)
-                p_area = Toolbox.polygon_area(poly)
+                p_area = polygon_area(poly)
                 if p_area > 0:
                     poly = poly[(0, 3, 2, 1), :]
 

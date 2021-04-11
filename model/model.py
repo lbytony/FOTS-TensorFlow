@@ -1,57 +1,77 @@
-import math
-
+#!-- encoding: utf-8 --
+import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers
 
-from base.base_model import BaseModel
+from utils.bbox import Toolbox
 from utils.target_keys import N_CLASS
-from .modules.recognition.recognition import CNN
-from .modules.shared_conv.shared_conv import SharedConv
+from .modules import SharedConv, Detector, Recognizer, RoIRotate
 
 
 class FOTSModel:
     def __init__(self, config):
+        self.training = config['training']
         self.sharedConv = SharedConv(config)
         self.detector = Detector(config)
         self.recognizer = Recognizer(N_CLASS, config)
-        pass
+        self.roirotate = RoIRotate()
 
     def summary(self):
         self.sharedConv.summary()
         self.detector.summary()
         self.recognizer.summary()
 
+    def to(self, device):
+        self.sharedConv = self.sharedConv.to(device)
+        self.detector = self.detector.to(device)
+        self.recognizer = self.recognizer.to(device)
 
-class Detector(BaseModel):
+    def train(self):
+        self.sharedConv.train()
+        self.detector.train()
+        self.recognizer.train()
 
-    def __init__(self, config):
-        super().__init__(config)
-        self.scoreMap = layers.Conv2D(32, 1, kernel_size=1)
-        self.geoMap = layers.Conv2D(32, 4, kernel_size=1)
-        self.angleMap = layers.Conv2D(32, 1, kernel_size=1)
+    def eval(self):
+        self.sharedConv.eval()
+        self.detector.eval()
+        self.recognizer.eval()
 
-    def call(self, *input):
-        final, = input
+    def call(self, input):
+        image, boxes, mapping = input
+        feature_map = self.sharedConv(image)
+        score_map, geo_map = self.detector(feature_map)
+        if self.training:
+            rois, lengths, indices = self.roirotate.call(feature_map, boxes[:, :8], mapping)
+            pred_mapping = mapping
+            pred_boxes = boxes
+        else:
+            score = score_map.permute(0, 2, 3, 1)
+            geometry = geo_map.permute(0, 2, 3, 1)
+            score = score.detach().cpu().numpy()
+            geometry = geometry.detach().cpu().numpy()
 
-        score = self.scoreMap(final)
-        score = tf.nn.sigmoid(score)
+            timer = {'net': 0, 'restore': 0, 'nms': 0}
 
-        geoMap = self.geoMap(final)
-        # 出来的是 normalise 到 0 -1 的值是到上下左右的距离，但是图像他都缩放到  512 * 512 了，但是 gt 里是算的绝对数值来的
-        geoMap = tf.nn.sigmoid(geoMap) * 512
+            pred_boxes = []
+            pred_mapping = []
+            for i in range(score.shape[0]):
+                s = score[i, :, :, 0]
+                g = geometry[i, :, :, ]
+                bb, _ = Toolbox.detect(score_map=s, geo_map=g, timer=timer)
+                bb_size = bb.shape[0]
 
-        angleMap = self.angleMap(final)
-        angleMap = (tf.nn.sigmoid(angleMap) - 0.5) * math.pi / 2
+                if len(bb) > 0:
+                    pred_mapping.append(np.array([i] * bb_size))
+                    pred_boxes.append(bb)
 
-        geometry = tf.concat([geoMap, angleMap], axis=1)
+            if len(pred_mapping) > 0:
+                pred_boxes = np.concatenate(pred_boxes)
+                pred_mapping = np.concatenate(pred_mapping)
+                rois, lengths, indices = self.roirotate.call(feature_map, pred_boxes[:, :8], pred_mapping)
+            else:
+                return score_map, geo_map, (None, None), pred_boxes, pred_mapping, None
 
-        return score, geometry
+        lengths = tf.convert_to_tensor(lengths)
+        preds = self.recognizer(rois, lengths)
+        preds = preds.permute(1, 0, 2)  # B, T, C -> T, B, C
 
-
-class Recognizer(BaseModel):
-    def __init__(self, n_class, config):
-        super().__init__(config)
-        self.cnn = CNN(8, 32, n_class, 256)
-
-    def call(self, rois, lengths):
-        return self.crnn(rois, lengths)
+        return score_map, geo_map, (preds, lengths), pred_boxes, pred_mapping, indices

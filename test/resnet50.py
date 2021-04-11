@@ -1,11 +1,12 @@
 import os
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 import tensorflow as tf
 from tensorflow.keras import optimizers, datasets
 
 from model.modules.shared_conv.resnet import ResNet50
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 tf.random.set_seed(2345)
 config = tf.compat.v1.ConfigProto(allow_soft_placement=True)
 gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.7)
